@@ -8,15 +8,20 @@ import org.nikkii.mapdownloader.maps.MapSource;
 import org.nikkii.mapdownloader.maps.filter.DuplicateMapFilter;
 import org.nikkii.mapdownloader.maps.filter.MapNameFilter;
 import org.nikkii.mapdownloader.maps.filter.MapSourceFilter;
+import org.nikkii.mapdownloader.maps.filter.StockMapFilter;
 import org.nikkii.mapdownloader.util.ui.FilteredListModel;
 import org.nikkii.mapdownloader.util.ui.PlaceholderTextField;
 
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
+import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JProgressBar;
+import javax.swing.ListSelectionModel;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Point;
@@ -27,6 +32,8 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.util.LinkedList;
+import java.util.Queue;
 
 /**
  * @author Nikki
@@ -63,6 +70,11 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	private final MapSourceFilter sourceFilter = new MapSourceFilter();
 
 	/**
+	 * The stock map filter.
+	 */
+	private final StockMapFilter stockFilter = new StockMapFilter();
+
+	/**
 	 * The search query list filter.
 	 */
 	private final MapNameFilter filter = new MapNameFilter();
@@ -76,6 +88,11 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	 * The downloader instance. This'll be null unless we already have a download going.
 	 */
 	private MapDownloader downloader;
+
+	/**
+	 * The download queue.
+	 */
+	private Queue<Map> queue = new LinkedList<>();
 
 	/**
 	 * Creates new form MapDownloader
@@ -110,6 +127,8 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 		filteredModel.addFilter(filter);
 		filteredModel.addFilter(duplicateFilter);
 
+		mapList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
 		mapList.setModel(filteredModel);
 		jScrollPane1.setViewportView(mapList);
 
@@ -118,8 +137,7 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 			public Component getListCellRendererComponent(JList list, Object value, int index,  boolean isSelected, boolean cellHasFocus) {
 				Component c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
 				if (mapFolder != null && mapFolder.exists() && value instanceof Map) {
-					File mapFile = new File(mapFolder, ((Map) value).getName() + ".bsp");
-					if (mapFile.exists()) {
+					if (mapExists((Map) value)) {
 						setBackground(Color.GREEN);
 					} else {
 						setBackground(getBackground());
@@ -132,28 +150,56 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 			}
 		});
 
+		mapList.addListSelectionListener(e -> {
+			int[] selected = mapList.getSelectedIndices();
+
+			if (selected.length < 1) {
+				return;
+			}
+
+			int existingCount = 0;
+
+			for (int index : selected) {
+				Map map = (Map) filteredModel.getElementAt(index);
+
+				if (mapExists(map)) {
+					existingCount++;
+				}
+			}
+
+			if (existingCount == selected.length) {
+				downloadButton.setText("Delete");
+			} else {
+				downloadButton.setText("Download");
+			}
+		});
+
 		mapList.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mousePressed(MouseEvent e) {
-				Point point = e.getPoint();
-
-				int index = mapList.locationToIndex(point);
-
-				mapList.setSelectedIndex(index);
-
-				if (index == -1) {
-					return;
-				}
-
-				final Map map = (Map) filteredModel.getElementAt(index);
-
-				if (mapFolder == null || !mapFolder.exists()) {
-					return;
-				}
-
-				File mapFile = new File(mapFolder, map.getName() + ".bsp");
-
 				if (e.getClickCount() == 2) {
+					Point point = e.getPoint();
+
+					int index = mapList.locationToIndex(point);
+
+					mapList.setSelectedIndex(index);
+
+					if (index == -1) {
+						return;
+					}
+
+					if (downloader != null) {
+						return;
+					}
+
+					Map map = (Map) filteredModel.getElementAt(index);
+
+					if (mapFolder == null || !mapFolder.exists()) {
+						return;
+					}
+
+					File mapFile = new File(mapFolder, map.getName() + ".bsp");
+
 					if (mapFile.exists()) {
 						int confirm = JOptionPane.showConfirmDialog(MapDownloaderPanel.this, "Do you wish to delete " + map + "?", "Delete map", JOptionPane.YES_NO_OPTION);
 
@@ -178,32 +224,29 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 
 		changeButton.setText("Browse");
 
-		changeButton.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				JFileChooser chooser = new JFileChooser();
+		changeButton.addActionListener(e -> {
+			JFileChooser chooser = new JFileChooser();
 
-				chooser.setCurrentDirectory(installPath != null ? installPath : new File(System.getProperty("user.home")));
+			chooser.setCurrentDirectory(installPath != null ? installPath : new File(System.getProperty("user.home")));
 
-				chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 
-				chooser.setVisible(true);
+			chooser.setVisible(true);
 
-				int option = chooser.showOpenDialog(null);
+			int option = chooser.showOpenDialog(null);
 
-				if (option != JFileChooser.APPROVE_OPTION) {
-					return;
-				}
-
-				File newDir = chooser.getSelectedFile(), tfDir = new File(newDir, "tf");
-
-				if (!tfDir.exists()) {
-					JOptionPane.showMessageDialog(null, "Unable to find \"tf\" folder in the specified directory. Please try again.");
-					return;
-				}
-
-				setInstallPath(newDir);
+			if (option != JFileChooser.APPROVE_OPTION) {
+				return;
 			}
+
+			File newDir = chooser.getSelectedFile(), tfDir = new File(newDir, "tf");
+
+			if (!tfDir.exists()) {
+				JOptionPane.showMessageDialog(null, "Unable to find \"tf\" folder in the specified directory. Please try again.");
+				return;
+			}
+
+			setInstallPath(newDir);
 		});
 
 		javax.swing.GroupLayout layout = new javax.swing.GroupLayout(this);
@@ -237,17 +280,21 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 		);
 	}// </editor-fold>
 
+	private boolean mapExists(Map map) {
+		return new File(mapFolder, map.getName() + ".bsp").exists();
+	}
+
 	/**
 	 * Download a specific map.
 	 *
 	 * @param map The map to download.
 	 */
 	private void downloadMap(Map map) {
-		System.out.println("Download " + map + " from " + map.getSource() + " to " + mapFolder);
-
 		if (!installPath.exists() || downloader != null) {
 			return;
 		}
+
+		System.out.println("Download " + map + " from " + map.getSource() + " to " + mapFolder);
 
 		if (!mapFolder.exists()) {
 			mapFolder.mkdirs();
@@ -261,9 +308,26 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 			@Override
 			public void progressFinished() {
 				downloader = null;
+
+				if (!queue.isEmpty()) {
+					downloadMap(queue.poll());
+				} else {
+					downloadButton.setText("Download");
+				}
 			}
 		});
 
+		downloader.addDecompressorListener(new ProgressAdaptor() {
+			@Override
+			public void progressStarted(long fileSize) {
+				downloadButton.setEnabled(false);
+			}
+
+			@Override
+			public void progressFinished() {
+				downloadButton.setEnabled(true);
+			}
+		});
 		downloader.addDecompressorListener(new DecompressProgressListener(currentFileLabel, progressBar, DECOMPRESS_FORMAT.replace("{map}", map.getName())));
 
 		downloader.start();
@@ -280,6 +344,11 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	private PlaceholderTextField searchField;
 
 	/**
+	 * Actually belongs to a JFrame, but we keep a reference.
+	 */
+	private JButton downloadButton;
+
+	/**
 	 * Add the specified maps to the model. THIS IS NOT THREAD SAFE!
 	 *
 	 * @param maps The maps to add.
@@ -287,9 +356,16 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	public void addMaps(Map... maps) {
 		synchronized(mapListModel) {
 			for (Map map : maps) {
+				if (!stockFilter.accept(map)) {
+					continue;
+				}
 				mapListModel.addElement(map);
 			}
 		}
+	}
+
+	public void setDownloadButton(JButton downloadButton) {
+		this.downloadButton = downloadButton;
 	}
 
 	/**
@@ -303,6 +379,20 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 
 		if (!mapFolder.exists()) {
 			mapFolder.mkdirs();
+		}
+
+		File stockFolder = new File("tf/maps");
+
+		if (stockFolder.exists()) {
+			for (File file : stockFolder.listFiles()) {
+				String f = file.getName();
+
+				if (!f.contains("bsp")) continue;
+
+				f = f.substring(0, f.indexOf('.'));
+
+				stockFilter.add(f);
+			}
 		}
 
 		jLabel1.setText("Path: " + installPath.getAbsolutePath());
@@ -335,5 +425,44 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	 */
 	public JProgressBar getProgressBar() {
 		return progressBar;
+	}
+
+	public void downloadSelectedMaps() {
+		if (downloadButton.getText().equals("Cancel")) {
+			queue.clear();
+			// Cancel the current download if possible.
+			if (downloader != null) {
+				downloader.cancel();
+			}
+			return;
+		}
+
+		int[] selected = mapList.getSelectedIndices();
+
+		if (selected.length < 1) {
+			return;
+		}
+
+		boolean delete = downloadButton.getText().equals("Delete");
+
+		for (int index : selected) {
+			Map map = (Map) filteredModel.getElementAt(index);
+
+			if (delete) {
+				if (mapExists(map)) {
+					new File(mapFolder, map.getName() + ".bsp").delete();
+				}
+			} else {
+				queue.add(map);
+			}
+		}
+
+		if (!queue.isEmpty()) {
+			if (downloader == null) {
+				downloadMap(queue.poll());
+			}
+
+			downloadButton.setText("Cancel");
+		}
 	}
 }

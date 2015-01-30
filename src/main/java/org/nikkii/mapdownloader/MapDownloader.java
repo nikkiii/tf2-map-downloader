@@ -8,13 +8,13 @@ import org.nikkii.mapdownloader.maps.Map;
 import org.nikkii.mapdownloader.maps.MapSource;
 import org.nikkii.mapdownloader.util.WinRegistry;
 
+import javax.swing.Box;
+import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.UIManager;
-import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -103,6 +103,16 @@ public class MapDownloader {
 		}
 
 		menu.add(sources);
+
+		menu.add(Box.createHorizontalGlue());
+
+		JButton downloadSelected = new JButton("Download");
+
+		mapPanel.setDownloadButton(downloadSelected);
+
+		downloadSelected.addActionListener(e -> mapPanel.downloadSelectedMaps());
+
+		menu.add(downloadSelected);
 
 		JFrame frame = new JFrame("Map Downloader");
 		frame.add(mapPanel);

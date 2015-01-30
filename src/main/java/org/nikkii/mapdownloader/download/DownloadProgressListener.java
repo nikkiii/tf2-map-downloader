@@ -77,6 +77,7 @@ public class DownloadProgressListener implements ProgressListener {
 	@Override
 	public void progressFinished() {
 		label.setText("Status: Idle.");
+		progressBar.setValue(0);
 
 		Alertify.show(new AlertifyBuilder().autoClose(5000).type(AlertifyType.INFO).text("Finished downloading " + map.getName()).build());
 	}

@@ -61,7 +61,12 @@ public class MapDownloader implements Runnable {
 	 * Download start time
 	 */
 	private long startTime = 0;
-	
+
+	/**
+	 * Cancel flag.
+	 */
+	private boolean cancel = false;
+
 	/**
 	 * Construct a new Downloader
 	 * @param map
@@ -99,10 +104,16 @@ public class MapDownloader implements Runnable {
 
 				try {
 					while (true) {
+						if (cancel) {
+							break;
+						}
+
 						int read = input.read(buffer, 0, buffer.length);
+
 						if (read < 0) {
 							break;
 						}
+
 						downloaded += read;
 
 						percent = (int) (((double) downloaded / (double) length) * 100);
@@ -118,16 +129,18 @@ public class MapDownloader implements Runnable {
 				}
 			}
 
-			if (map.isCompressed()) { // If compressed, decompress the map.
-				Decompressor decompressor = new Decompressor(tempOutput, outputFile);
+			if (!cancel) {
+				if (map.isCompressed()) { // If compressed, decompress the map.
+					Decompressor decompressor = new Decompressor(tempOutput, outputFile);
 
-				for (ProgressListener listener : decompressorListeners) {
-					decompressor.addListener(listener);
+					for (ProgressListener listener : decompressorListeners) {
+						decompressor.addListener(listener);
+					}
+
+					decompressor.run();
+				} else { // Otherwise, move the file.
+					tempOutput.renameTo(outputFile);
 				}
-
-				decompressor.run();
-			} else { // Otherwise, move the file.
-				tempOutput.renameTo(outputFile);
 			}
 
 			// If the output file exists still, delete it.
@@ -155,6 +168,10 @@ public class MapDownloader implements Runnable {
 	 */
 	public void start() {
 		new Thread(this).start();
+	}
+
+	public void cancel() {
+		this.cancel = true;
 	}
 	
 	/**
