@@ -40,7 +40,7 @@ public class MapDownloader {
 	 */
 	private static final MapSource[] SOURCES = new MapSource[] {
 		new MapSource("ProbablyAServer", "http://cdn.probablyaserver.com/tf/maps/", 0),
-		new MapSource("TF2Center", "http://downloads.tf2center.com/tf/maps/", 1)
+		new MapSource("FakkelBrigade", "http://fakkelbrigade.eu/maps/", 1)
 	};
 
 	public static void main(String[] args) throws Exception {
