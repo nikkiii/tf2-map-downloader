@@ -33,6 +33,11 @@ public class FilteredListModel<T> extends AbstractListModel implements ListDataL
 	private final List<Integer> indices = new ArrayList<>();
 
 	/**
+	 * Flag to enable/disable filtering temporarily.
+	 */
+	private boolean filterEnabled = false;
+
+	/**
 	 * Construct a new list model with the specified source.
 	 *
 	 * @param source The original model source.
@@ -59,6 +64,10 @@ public class FilteredListModel<T> extends AbstractListModel implements ListDataL
 	 * Filter this model's items.
 	 */
 	public void doFilter() {
+		if (!filterEnabled) {
+			return;
+		}
+
 		synchronized(source) {
 			indices.clear();
 
@@ -111,5 +120,13 @@ public class FilteredListModel<T> extends AbstractListModel implements ListDataL
 	@Override
 	public void contentsChanged(ListDataEvent e) {
 		doFilter();
+	}
+
+	/**
+	 * Set the filter enabled flag.
+	 * @param filterEnabled
+	 */
+	public void setFilterEnabled(boolean filterEnabled) {
+		this.filterEnabled = filterEnabled;
 	}
 }

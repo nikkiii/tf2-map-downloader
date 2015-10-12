@@ -9,6 +9,8 @@ import org.nikkii.mapdownloader.maps.filter.DuplicateMapFilter;
 import org.nikkii.mapdownloader.maps.filter.MapNameFilter;
 import org.nikkii.mapdownloader.maps.filter.MapSourceFilter;
 import org.nikkii.mapdownloader.maps.filter.StockMapFilter;
+import org.nikkii.mapdownloader.util.InstalledListWatcher;
+import org.nikkii.mapdownloader.util.WatcherCallback;
 import org.nikkii.mapdownloader.util.ui.FilteredListModel;
 import org.nikkii.mapdownloader.util.ui.PlaceholderTextField;
 
@@ -28,7 +30,9 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.IOException;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 
 /**
@@ -89,6 +93,11 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	 * The download queue.
 	 */
 	private Queue<Map> queue = new LinkedList<>();
+
+	/**
+	 * A list of preloaded installed maps.
+	 */
+	private List<String> installedMaps = new LinkedList<>();
 
 	/**
 	 * Creates new form MapDownloader
@@ -277,7 +286,7 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	}// </editor-fold>
 
 	private boolean mapExists(Map map) {
-		return new File(mapFolder, map.getName() + ".bsp").exists();
+		return installedMaps.contains(map.getName());
 	}
 
 	/**
@@ -350,6 +359,8 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 	 * @param maps The maps to add.
 	 */
 	public void addMaps(Map... maps) {
+		// Disable filtering so we can add maps without calling it for possibly thousands of maps.
+		filteredModel.setFilterEnabled(false);
 		synchronized(mapListModel) {
 			for (Map map : maps) {
 				if (!stockFilter.accept(map)) {
@@ -358,6 +369,9 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 				mapListModel.addElement(map);
 			}
 		}
+		// Re-enable filtering and run it once
+		filteredModel.setFilterEnabled(true);
+		filteredModel.doFilter();
 	}
 
 	public void setDownloadButton(JButton downloadButton) {
@@ -377,6 +391,16 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 			mapFolder.mkdirs();
 		}
 
+		for (File file : mapFolder.listFiles()) {
+			String f = file.getName();
+
+			if (!f.contains("bsp")) continue;
+
+			f = f.substring(0, f.indexOf('.'));
+
+			installedMaps.add(f);
+		}
+
 		File stockFolder = new File("tf/maps");
 
 		if (stockFolder.exists()) {
@@ -392,6 +416,29 @@ public class MapDownloaderPanel extends javax.swing.JPanel {
 		}
 
 		jLabel1.setText("Path: " + installPath.getAbsolutePath());
+
+		try {
+			InstalledListWatcher watcher = new InstalledListWatcher(mapFolder.toPath(), new WatcherCallback() {
+				@Override
+				public void mapAdded(String name) {
+					if (!installedMaps.contains(name)) {
+						installedMaps.add(name);
+						filteredModel.doFilter();
+					}
+				}
+
+				@Override
+				public void mapRemoved(String name) {
+					if (installedMaps.contains(name)) {
+						installedMaps.remove(name);
+						filteredModel.doFilter();
+					}
+				}
+			});
+			new Thread(watcher).start();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**
